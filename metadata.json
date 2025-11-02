@@ -1,0 +1,7 @@
+{
+  "name": "LogEase: Smart Logistics",
+  "description": "A modern logistics platform connecting drivers and customers. Features real-time location tracking, trip management, and AI-powered daily performance summaries for drivers.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
