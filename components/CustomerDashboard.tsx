@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Ride, RideStatus, Location, LocationUpdate } from '../types';
 import * as tripService from '../services/tripService';
@@ -12,7 +11,7 @@ interface CustomerDashboardProps {
 }
 
 const SignalIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12.556a10 10 0 0 1 18.528 0" />
       <path d="M5 15.556a6 6 0 0 1 12.528 0" />
       <path d="M8.5 18.5a2.5 2.5 0 0 1 5 0" />
@@ -35,8 +34,8 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
   const [driverLocation, setDriverLocation] = useState<Location | null>(null);
   const [eta, setEta] = useState<number | null>(null);
 
-  const checkRideStatus = useCallback(() => {
-    const ride = tripService.getRideForCustomer(user.id);
+  const checkRideStatus = useCallback(async () => {
+    const ride = await tripService.getRideForCustomer(user.id);
     setActiveRide(ride);
   }, [user.id]);
 
@@ -74,8 +73,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
     setIsLoading(true);
     setError('');
     try {
-      await new Promise(res => setTimeout(res, 500));
-      const newRide = tripService.requestRide(user);
+      const newRide = await tripService.requestRide(user);
       setActiveRide(newRide);
     } catch (err) {
       setError('Failed to request a ride.');
@@ -87,9 +85,8 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
   
   const handleCancelRide = async () => {
       setIsLoading(true);
-      await new Promise(res => setTimeout(res, 500));
       if (activeRide) {
-        tripService.cancelRide(activeRide);
+        await tripService.cancelRide(activeRide);
         setActiveRide(null);
       }
       setIsLoading(false);
@@ -114,14 +111,24 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
 
     let title = '';
     let description = '';
+    let titleContent: React.ReactNode;
     const etaDisplay = formatEta(eta);
     const locationForMap = driverLocation || activeRide.driverLocation;
     let map = <MapDisplay ride={activeRide} currentDriverLocation={locationForMap} />;
 
     switch (activeRide.status) {
         case RideStatus.REQUESTED:
-            title = "All drivers are busy...";
-            description = "You've been placed in a queue. We'll assign a driver as soon as one becomes available.";
+            title = "Finding you a driver...";
+            description = "Please wait while we connect you with a nearby driver.";
+            titleContent = (
+                <div className="flex items-center justify-center">
+                    <svg className="animate-spin mr-3 h-5 w-5 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {title}
+                </div>
+            );
             break;
         case RideStatus.ACCEPTED:
             if (activeRide.arrivedAtPickup && activeRide.otp) {
@@ -140,11 +147,16 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
             description = `On your way to: ${activeRide.destination.address}`;
             break;
     }
+    
+    if (!titleContent) {
+        titleContent = title;
+    }
+
 
     return (
         <>
-            <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
-            <p className="text-gray-600 dark:text-gray-400 mt-1 mb-4">
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100 text-center">{titleContent}</h3>
+            <p className="text-gray-600 dark:text-gray-400 mt-1 mb-4 text-center">
               {description}
               {etaDisplay && (
                 <span className="font-semibold text-blue-600 dark:text-blue-400 ml-2">

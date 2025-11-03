@@ -1,88 +1,121 @@
-
 import { Ride, RideStatus, Trip, Location, User } from '../types';
 import { locationService } from './locationService';
 import { getDrivers } from './authService';
+import { db } from './authService';
+import { collection, doc, addDoc, getDoc, setDoc, updateDoc, deleteDoc, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 
-const RIDE_REQUESTS_KEY = 'logease_ride_requests';
-const IN_PROGRESS_RIDES_KEY = 'logease_in_progress_rides';
-const TRIPS_KEY = 'logease_trips';
 
-// Mock locations
 const MOCK_LOCATIONS = {
   customer: { lat: 34.0522, lng: -118.2437, address: "Union Station, Los Angeles" },
   driver: { lat: 34.0622, lng: -118.2537, address: "Dodger Stadium, Los Angeles" },
   destination: { lat: 33.9416, lng: -118.4085, address: "LAX Airport, Los Angeles" },
 };
 
-// --- Storage Helper Functions ---
-const getRideRequestsFromStorage = (): Ride[] => {
-  const ridesJson = localStorage.getItem(RIDE_REQUESTS_KEY);
-  return ridesJson ? JSON.parse(ridesJson) : [];
-};
-const saveRideRequestsToStorage = (rides: Ride[]) => {
-  localStorage.setItem(RIDE_REQUESTS_KEY, JSON.stringify(rides));
-};
-const getInProgressRidesFromStorage = (): Record<string, Ride> => {
-  const ridesJson = localStorage.getItem(IN_PROGRESS_RIDES_KEY);
-  return ridesJson ? JSON.parse(ridesJson) : {};
-};
-const saveInProgressRidesToStorage = (rides: Record<string, Ride>) => {
-  localStorage.setItem(IN_PROGRESS_RIDES_KEY, JSON.stringify(rides));
-};
-// ---
+const _tryToAssignQueuedRides = async () => {
+    const q = query(collection(db, "rides"), where("status", "==", RideStatus.REQUESTED), orderBy("id"), limit(1));
+    const requestSnapshot = await getDocs(q);
 
-const _assignRide = (ride: Ride, driver: User) => {
-    const inProgressRides = getInProgressRidesFromStorage();
-    const updatedRide: Ride = { ...ride, status: RideStatus.ACCEPTED, driverId: driver.id, isConfirmedByDriver: false };
-    inProgressRides[updatedRide.id] = updatedRide;
-    saveInProgressRidesToStorage(inProgressRides);
-};
+    if (requestSnapshot.empty) return;
 
-const _tryToAssignQueuedRides = () => {
-    let requests = getRideRequestsFromStorage();
-    if (!requests.length) return;
+    const rideToAssign = { id: requestSnapshot.docs[0].id, ...requestSnapshot.docs[0].data() } as Ride;
 
-    const allDrivers = getDrivers();
-    const inProgressRides = getInProgressRidesFromStorage();
-    const busyDriverIds = new Set(Object.values(inProgressRides).map(r => r.driverId));
+    const allDrivers = await getDrivers();
+
+    const activeRidesQuery = query(collection(db, "rides"), where("status", "in", [RideStatus.ACCEPTED, RideStatus.IN_PROGRESS]));
+    const activeRidesSnapshot = await getDocs(activeRidesQuery);
+    const busyDriverIds = new Set(activeRidesSnapshot.docs.map(doc => doc.data().driverId));
+    
     const availableDrivers = allDrivers.filter(d => !busyDriverIds.has(d.id));
 
     if (!availableDrivers.length) return;
-    
-    // Match available drivers to pending requests
-    while(requests.length > 0 && availableDrivers.length > 0) {
-        const rideToAssign = requests.shift()!;
-        const driverForRide = availableDrivers.shift()!;
-        _assignRide(rideToAssign, driverForRide);
-    }
-    
-    saveRideRequestsToStorage(requests); // Save the updated list of requests
+
+    const driverForRide = availableDrivers[0];
+    const rideRef = doc(db, "rides", rideToAssign.id);
+    await updateDoc(rideRef, {
+        status: RideStatus.ACCEPTED,
+        driverId: driverForRide.id,
+        isConfirmedByDriver: false
+    });
 };
 
-
-const initializeMockRides = () => {
-  // Clear all ride-related storage on startup for a clean state
-  localStorage.removeItem(RIDE_REQUESTS_KEY);
-  localStorage.removeItem(IN_PROGRESS_RIDES_KEY);
+export const getRideForDriver = async (driverId: string): Promise<Ride | null> => {
+  const q = query(
+    collection(db, "rides"), 
+    where("driverId", "==", driverId),
+    where("status", "in", [RideStatus.ACCEPTED, RideStatus.IN_PROGRESS]),
+    limit(1)
+  );
+  const querySnapshot = await getDocs(q);
+  if (!querySnapshot.empty) {
+    const rideDoc = querySnapshot.docs[0];
+    return { id: rideDoc.id, ...rideDoc.data() } as Ride;
+  }
+  return null;
 };
 
-initializeMockRides();
-
-export const getRideForDriver = (driverId: string): Ride | null => {
-  const inProgressRides = getInProgressRidesFromStorage();
-  return Object.values(inProgressRides).find(r => r.driverId === driverId) || null;
+export const getRideForCustomer = async (customerId: string): Promise<Ride | null> => {
+  const q = query(
+    collection(db, "rides"),
+    where("customerId", "==", customerId),
+    where("status", "in", [RideStatus.REQUESTED, RideStatus.ACCEPTED, RideStatus.IN_PROGRESS]),
+    limit(1)
+  );
+  const querySnapshot = await getDocs(q);
+  if (!querySnapshot.empty) {
+    const rideDoc = querySnapshot.docs[0];
+    return { id: rideDoc.id, ...rideDoc.data() } as Ride;
+  }
+  return null;
 };
 
-export const getRideForCustomer = (customerId: string): Ride | null => {
-  const rideInRequests = getRideRequestsFromStorage().find(r => r.customerId === customerId);
-  if (rideInRequests) return rideInRequests;
-
-  const rideInProgress = Object.values(getInProgressRidesFromStorage()).find(r => r.customerId === customerId);
-  return rideInProgress || null;
+export const acceptRide = async (ride: Ride): Promise<Ride> => {
+  const rideRef = doc(db, "rides", ride.id);
+  const updatedRide = { ...ride, isConfirmedByDriver: true };
+  await updateDoc(rideRef, { isConfirmedByDriver: true });
+  return updatedRide;
 };
 
-export const requestRide = (customer: User): Ride => {
-  const newRide: Ride = {
+const simulateDriverAcceptance = (rideId: string) => {
+    // Step 1: Assign a driver after a delay
+    setTimeout(async () => {
+        const rideRef = doc(db, "rides", rideId);
+        const rideSnap = await getDoc(rideRef);
+
+        if (!rideSnap.exists() || rideSnap.data().status !== RideStatus.REQUESTED) {
+            return;
+        }
+
+        const allDrivers = await getDrivers();
+        const activeRidesQuery = query(collection(db, "rides"), where("status", "in", [RideStatus.ACCEPTED, RideStatus.IN_PROGRESS]));
+        const activeRidesSnapshot = await getDocs(activeRidesQuery);
+        const busyDriverIds = new Set(activeRidesSnapshot.docs.map(doc => doc.data().driverId));
+        let availableDrivers = allDrivers.filter(d => !busyDriverIds.has(d.id));
+        
+        if (availableDrivers.length === 0 && allDrivers.length > 0) {
+            availableDrivers = [allDrivers[Math.floor(Math.random() * allDrivers.length)]];
+        }
+
+        if (availableDrivers.length > 0) {
+            const driverForRide = availableDrivers[0];
+            await updateDoc(rideRef, {
+                status: RideStatus.ACCEPTED,
+                driverId: driverForRide.id,
+                isConfirmedByDriver: false
+            });
+
+            // Step 2: Simulate the driver accepting the ride
+            setTimeout(async () => {
+                const currentRideSnap = await getDoc(rideRef);
+                if (currentRideSnap.exists() && !currentRideSnap.data().isConfirmedByDriver) {
+                     await updateDoc(rideRef, { isConfirmedByDriver: true });
+                }
+            }, 3000 + Math.random() * 2000);
+        }
+    }, 2000 + Math.random() * 2000);
+};
+
+export const requestRide = async (customer: User): Promise<Ride> => {
+  const newRideData = {
     id: `ride_${Date.now()}`, status: RideStatus.REQUESTED, customerId: customer.id, driverId: null,
     customerLocation: MOCK_LOCATIONS.customer,
     driverLocation: MOCK_LOCATIONS.driver,
@@ -90,78 +123,55 @@ export const requestRide = (customer: User): Ride => {
     startTime: null, endTime: null, isConfirmedByDriver: false,
     arrivedAtPickup: false, otp: null,
   };
-  const requests = getRideRequestsFromStorage();
-  requests.push(newRide);
-  saveRideRequestsToStorage(requests);
+  const rideRef = await addDoc(collection(db, "rides"), newRideData);
+  const newRide = { ...newRideData, id: rideRef.id };
+  await setDoc(doc(db, "rides", rideRef.id), newRide); // Set with ID field
+
+  simulateDriverAcceptance(newRide.id);
   
-  // Attempt to assign the new ride immediately
+  return newRide;
+};
+
+export const rejectRide = async (ride: Ride) => {
+  const rideRef = doc(db, "rides", ride.id);
+  await updateDoc(rideRef, {
+      status: RideStatus.REQUESTED,
+      driverId: null,
+      isConfirmedByDriver: false,
+      arrivedAtPickup: false,
+      otp: null
+  });
   _tryToAssignQueuedRides();
-  
-  // Return the ride's current state (it might have been accepted)
-  return getRideForCustomer(customer.id)!;
 };
 
-export const acceptRide = (ride: Ride): Ride => {
-  const inProgressRides = getInProgressRidesFromStorage();
-  if (!inProgressRides[ride.id]) return ride;
-  
-  const updatedRide: Ride = { ...ride, isConfirmedByDriver: true };
-  inProgressRides[updatedRide.id] = updatedRide;
-  saveInProgressRidesToStorage(inProgressRides);
+export const driverArrivedAtPickup = async (ride: Ride): Promise<Ride> => {
+  const rideRef = doc(db, "rides", ride.id);
+  const otp = Math.floor(1000 + Math.random() * 9000).toString();
+  const updatedRide = { ...ride, arrivedAtPickup: true, otp: otp };
+  await updateDoc(rideRef, { arrivedAtPickup: true, otp: otp });
   return updatedRide;
 };
 
-export const rejectRide = (ride: Ride) => {
-  const inProgressRides = getInProgressRidesFromStorage();
-  delete inProgressRides[ride.id];
-  saveInProgressRidesToStorage(inProgressRides);
+export const verifyOtpAndStartTrip = async (ride: Ride, submittedOtp: string): Promise<{ success: boolean; ride?: Ride }> => {
+  const rideRef = doc(db, "rides", ride.id);
+  const rideSnap = await getDoc(rideRef);
   
-  const rideRequests = getRideRequestsFromStorage();
-  const rejectedRide: Ride = { ...ride, status: RideStatus.REQUESTED, driverId: null, isConfirmedByDriver: false, arrivedAtPickup: false, otp: null };
-  rideRequests.unshift(rejectedRide); // Put the customer back at the front of the queue
-  saveRideRequestsToStorage(rideRequests);
-  
-  _tryToAssignQueuedRides(); // Immediately try to find another driver
-};
-
-export const driverArrivedAtPickup = (ride: Ride): Ride => {
-  const inProgressRides = getInProgressRidesFromStorage();
-  if (!inProgressRides[ride.id]) return ride;
-
-  const otp = Math.floor(1000 + Math.random() * 9000).toString(); // Generate 4-digit OTP
-  const updatedRide: Ride = { ...ride, arrivedAtPickup: true, otp: otp };
-  
-  inProgressRides[updatedRide.id] = updatedRide;
-  saveInProgressRidesToStorage(inProgressRides);
-  
-  return updatedRide;
-};
-
-export const verifyOtpAndStartTrip = (ride: Ride, submittedOtp: string): { success: boolean; ride?: Ride } => {
-  const inProgressRides = getInProgressRidesFromStorage();
-  const storedRide = inProgressRides[ride.id];
-
-  if (!storedRide || storedRide.otp !== submittedOtp) {
+  if (!rideSnap.exists() || rideSnap.data().otp !== submittedOtp) {
     return { success: false };
   }
 
-  // OTP is correct, start the trip
-  const startedRide = startTrip(storedRide);
+  const startedRide = await startTrip(ride);
   return { success: true, ride: startedRide };
 };
 
-
-export const startTrip = (ride: Ride): Ride => {
-  const inProgressRides = getInProgressRidesFromStorage();
-  if (!inProgressRides[ride.id]) return ride;
-
-  const updatedRide: Ride = { ...ride, status: RideStatus.IN_PROGRESS, startTime: Date.now() };
-  inProgressRides[updatedRide.id] = updatedRide;
-  saveInProgressRidesToStorage(inProgressRides);
+export const startTrip = async (ride: Ride): Promise<Ride> => {
+  const rideRef = doc(db, "rides", ride.id);
+  const updatedRide = { ...ride, status: RideStatus.IN_PROGRESS, startTime: Date.now() };
+  await updateDoc(rideRef, { status: RideStatus.IN_PROGRESS, startTime: Date.now() });
   return updatedRide;
 };
 
-export const endTrip = (ride: Ride): Trip => {
+export const endTrip = async (ride: Ride): Promise<Trip> => {
   const endTime = Date.now();
   const distanceKm = Math.floor(Math.random() * 25) + 5;
   const earnings = distanceKm * 12 + 50;
@@ -172,55 +182,47 @@ export const endTrip = (ride: Ride): Trip => {
     startAddress: ride.customerLocation.address, endAddress: ride.destination.address,
   };
 
-  const allTrips = getTripsForDriver(ride.driverId!);
-  allTrips.push(newTrip);
-  localStorage.setItem(`${TRIPS_KEY}_${ride.driverId}`, JSON.stringify(allTrips));
+  await addDoc(collection(db, "trips"), newTrip);
   
-  const inProgressRides = getInProgressRidesFromStorage();
-  delete inProgressRides[ride.id];
-  saveInProgressRidesToStorage(inProgressRides);
+  const rideRef = doc(db, "rides", ride.id);
+  await deleteDoc(rideRef);
 
   locationService.stopTracking();
   
-  // Now that this driver is free, check if there are queued rides
   _tryToAssignQueuedRides();
 
   return newTrip;
 };
 
-export const cancelRide = (ride: Ride) => {
-  if (ride.status === RideStatus.REQUESTED) {
-    let requests = getRideRequestsFromStorage();
-    requests = requests.filter(r => r.id !== ride.id);
-    saveRideRequestsToStorage(requests);
-  } else {
-    // FIX: Corrected typo from getInProgressRidesFromstorage to getInProgressRidesFromStorage
-    const inProgressRides = getInProgressRidesFromStorage();
-    const driverId = inProgressRides[ride.id]?.driverId;
-    delete inProgressRides[ride.id];
-    saveInProgressRidesToStorage(inProgressRides);
-    // If a driver was assigned, check for queued rides for them now
-    if (driverId) {
-        _tryToAssignQueuedRides();
-    }
+export const cancelRide = async (ride: Ride) => {
+  const rideRef = doc(db, "rides", ride.id);
+  await deleteDoc(rideRef);
+
+  if (ride.driverId) {
+    _tryToAssignQueuedRides();
   }
+  
   locationService.stopTracking();
 };
 
-export const getTripsForDriver = (driverId: string): Trip[] => {
-  const tripsJson = localStorage.getItem(`${TRIPS_KEY}_${driverId}`);
-  return tripsJson ? JSON.parse(tripsJson) : [];
+export const getTripsForDriver = async (driverId: string): Promise<Trip[]> => {
+  const q = query(collection(db, "trips"), where("driverId", "==", driverId));
+  const querySnapshot = await getDocs(q);
+  const trips: Trip[] = [];
+  querySnapshot.forEach((doc) => {
+    trips.push({ id: doc.id, ...doc.data() } as Trip);
+  });
+  return trips;
 };
 
 export const getNearbyDriversCount = (): number => {
     return Math.floor(Math.random() * 8) + 2;
 };
 
-// Provides a non-persistent, deterministic estimation for display purposes.
 export const estimateRideDetails = (ride: Ride): { distanceKm: number, earnings: number } => {
     const hash = (s: string) => s.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0);
     const combinedHash = Math.abs(hash(ride.customerLocation.address) + hash(ride.destination.address));
-    const distanceKm = 5 + (combinedHash % 20); // 5 to 25 km
+    const distanceKm = 5 + (combinedHash % 20);
     const earnings = distanceKm * 12 + 50;
     return { distanceKm, earnings: parseFloat(earnings.toFixed(2)) };
 }

@@ -11,6 +11,7 @@ interface CustomerRegisterProps {
 
 const CustomerRegister: React.FC<CustomerRegisterProps> = ({ onRegisterSuccess, onSwitchToLogin }) => {
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -22,9 +23,8 @@ const CustomerRegister: React.FC<CustomerRegisterProps> = ({ onRegisterSuccess, 
     setError('');
     setSuccess('');
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const result = registerCustomer(name, password);
+    // FIX: Pass email to registerCustomer function.
+    const result = await registerCustomer(name, email, password);
     if (result.success) {
       setSuccess(result.message + ' You will be redirected to login shortly.');
       setTimeout(() => {
@@ -54,6 +54,15 @@ const CustomerRegister: React.FC<CustomerRegisterProps> = ({ onRegisterSuccess, 
                 onChange={(e) => setName(e.target.value)}
                 required
                 label="Name"
+              />
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                label="Email"
               />
               <Input
                 id="password"

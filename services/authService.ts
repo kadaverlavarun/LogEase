@@ -1,114 +1,135 @@
+
 import { User, Role } from '../types';
+import { initializeApp } from "firebase/app";
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut,
+  updateProfile,
+  User as FirebaseUser
+} from "firebase/auth";
+import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
-const USERS_KEY = 'logease_users';
-const CURRENT_USER_KEY = 'logease_current_user';
+// Firebase configuration and initialization
+const firebaseConfig = {
+  apiKey: "AIzaSyBrvNYsEv7KTZ90ObRUG60LuDxXj8rzsOM",
+  authDomain: "elog-42217.firebaseapp.com",
+  projectId: "elog-42217",
+  storageBucket: "elog-42217.firebasestorage.app",
+  messagingSenderId: "856474718279",
+  appId: "1:856474718279:web:30158f6d36ad8501cc6162",
+  measurementId: "G-J21PRTZSRN"
+};
 
-// Initialize with some mock users
-const initializeMockUsers = () => {
-  if (!localStorage.getItem(USERS_KEY)) {
-    const mockUsers: User[] = [
-      { id: 'cust1', name: 'customer', role: Role.CUSTOMER },
-      { id: 'cust2', name: 'alice', role: Role.CUSTOMER },
-      { id: 'cust3', name: 'bob', role: Role.CUSTOMER },
-      { id: 'driver1', name: 'driver', role: Role.DRIVER, vehicleNumber: 'DRV-001' },
-      { id: 'driver2', name: 'charlie', role: Role.DRIVER, vehicleNumber: 'DRV-002' },
-      { id: 'driver3', name: 'diana', role: Role.DRIVER, vehicleNumber: 'DRV-003' },
-    ];
-    const mockPasswords = {
-      'customer': 'password123',
-      'alice': 'password123',
-      'bob': 'password123',
-      'driver': 'password123',
-      'charlie': 'password123',
-      'diana': 'password123'
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+
+export const registerDriver = async (name: string, email: string, password: string, vehicleNumber: string, licenseNumber: string): Promise<{ success: boolean; message: string; user?: User }> => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    await updateProfile(user, { displayName: name });
+
+    const newUser: User = {
+      id: user.uid,
+      name,
+      email,
+      role: Role.DRIVER,
+      vehicleNumber,
+      licenseNumber,
     };
-    localStorage.setItem(USERS_KEY, JSON.stringify(mockUsers));
-    localStorage.setItem('logease_passwords', JSON.stringify(mockPasswords));
+    
+    const firestoreData: Omit<User, 'id'> = {
+        name, email, role: Role.DRIVER, vehicleNumber, licenseNumber
+    };
+
+    await setDoc(doc(db, "users", user.uid), firestoreData);
+
+    return { success: true, message: 'Registration successful!', user: newUser };
+  } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+        return { success: false, message: 'An account with this email already exists.' };
+    }
+    return { success: false, message: error.message };
   }
 };
 
-initializeMockUsers();
+export const registerCustomer = async (name: string, email: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
 
-const getStoredUsers = (): User[] => {
-  const usersJson = localStorage.getItem(USERS_KEY);
-  return usersJson ? JSON.parse(usersJson) : [];
+    await updateProfile(user, { displayName: name });
+    
+    const newUser: User = {
+      id: user.uid,
+      name,
+      email,
+      role: Role.CUSTOMER,
+    };
+    
+    const firestoreData: Omit<User, 'id'> = {
+        name, email, role: Role.CUSTOMER
+    };
+
+    await setDoc(doc(db, "users", user.uid), firestoreData);
+    
+    return { success: true, message: 'Registration successful!', user: newUser };
+  } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+        return { success: false, message: 'An account with this email already exists.' };
+    }
+    return { success: false, message: error.message };
+  }
 };
 
-const getStoredPasswords = (): Record<string, string> => {
-  const passwordsJson = localStorage.getItem('logease_passwords');
-  return passwordsJson ? JSON.parse(passwordsJson) : {};
+export const login = async (email: string, password: string): Promise<{ user: User | null; error?: string }> => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userProfile = await getUserProfile(userCredential.user);
+    if (!userProfile) {
+        // This is an edge case: auth succeeded but profile is missing.
+        return { user: null, error: "Your account exists, but we couldn't load your profile. Please contact support." };
+    }
+    return { user: userProfile };
+  } catch (error: any) {
+    console.error("Firebase login error:", error);
+    if (error.code === 'auth/invalid-credential') {
+      return { user: null, error: 'Invalid email or password. Please check your credentials and try again.' };
+    }
+    return { user: null, error: 'An unexpected error occurred during login. Please try again later.' };
+  }
+};
+
+export const logout = async () => {
+  await signOut(auth);
+};
+
+export const getUserProfile = async (firebaseUser: FirebaseUser): Promise<User | null> => {
+    const docRef = doc(db, "users", firebaseUser.uid);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+        return { id: firebaseUser.uid, ...docSnap.data() } as User;
+    } else {
+        console.error("No such user profile in Firestore!");
+        return null;
+    }
 }
 
-export const registerDriver = (name: string, password: string, vehicleNumber: string): { success: boolean, message: string } => {
-  const users = getStoredUsers();
-  if (users.some(u => u.name.toLowerCase() === name.toLowerCase())) {
-    return { success: false, message: 'Driver name already exists.' };
-  }
-  if (users.some(u => u.vehicleNumber?.toLowerCase() === vehicleNumber.toLowerCase())) {
-    return { success: false, message: 'Vehicle number is already registered.' };
-  }
-
-  const newUser: User = {
-    id: `driver_${Date.now()}`,
-    name,
-    role: Role.DRIVER,
-    vehicleNumber,
-  };
-  
-  users.push(newUser);
-  const passwords = getStoredPasswords();
-  passwords[name] = password;
-
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  localStorage.setItem('logease_passwords', JSON.stringify(passwords));
-  
-  return { success: true, message: 'Registration successful!' };
+export const getCurrentUser = (): FirebaseUser | null => {
+  return auth.currentUser;
 };
 
-export const registerCustomer = (name: string, password: string): { success: boolean, message: string } => {
-  const users = getStoredUsers();
-  if (users.some(u => u.name.toLowerCase() === name.toLowerCase())) {
-    return { success: false, message: 'Customer name already exists.' };
-  }
-
-  const newUser: User = {
-    id: `cust_${Date.now()}`,
-    name,
-    role: Role.CUSTOMER,
-  };
-
-  users.push(newUser);
-  const passwords = getStoredPasswords();
-  passwords[name] = password;
-
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  localStorage.setItem('logease_passwords', JSON.stringify(passwords));
-
-  return { success: true, message: 'Registration successful!' };
-};
-
-export const login = (name: string, password: string): User | null => {
-  const users = getStoredUsers();
-  const passwords = getStoredPasswords();
-
-  const user = users.find(u => u.name.toLowerCase() === name.toLowerCase());
-
-  if (user && passwords[user.name] === password) {
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-    return user;
-  }
-  return null;
-};
-
-export const logout = () => {
-  localStorage.removeItem(CURRENT_USER_KEY);
-};
-
-export const getCurrentUser = (): User | null => {
-  const userJson = localStorage.getItem(CURRENT_USER_KEY);
-  return userJson ? JSON.parse(userJson) : null;
-};
-
-export const getDrivers = (): User[] => {
-    return getStoredUsers().filter(u => u.role === Role.DRIVER);
+export const getDrivers = async (): Promise<User[]> => {
+    const q = query(collection(db, "users"), where("role", "==", Role.DRIVER));
+    const querySnapshot = await getDocs(q);
+    const drivers: User[] = [];
+    querySnapshot.forEach((doc) => {
+        drivers.push({ id: doc.id, ...doc.data() } as User);
+    });
+    return drivers;
 };

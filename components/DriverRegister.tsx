@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { registerDriver } from '../services/authService';
 import Button from './ui/Button';
@@ -12,8 +11,10 @@ interface DriverRegisterProps {
 
 const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSwitchToLogin }) => {
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -24,9 +25,8 @@ const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSw
     setError('');
     setSuccess('');
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const result = registerDriver(name, password, vehicleNumber);
+    // FIX: Pass licenseNumber to the registerDriver function.
+    const result = await registerDriver(name, email, password, vehicleNumber, licenseNumber);
     if (result.success) {
       setSuccess(result.message + ' You will be redirected to login shortly.');
       setTimeout(() => {
@@ -58,6 +58,15 @@ const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSw
                 label="Vehicle Number"
               />
               <Input
+                id="licenseNumber"
+                type="text"
+                placeholder="e.g., MH1420110001234"
+                value={licenseNumber}
+                onChange={(e) => setLicenseNumber(e.target.value)}
+                required
+                label="License Number"
+              />
+              <Input
                 id="name"
                 type="text"
                 placeholder="Enter your name"
@@ -65,6 +74,15 @@ const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSw
                 onChange={(e) => setName(e.target.value)}
                 required
                 label="Name"
+              />
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                label="Email"
               />
               <Input
                 id="password"

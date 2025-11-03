@@ -6,9 +6,11 @@ export enum Role {
 
 export interface User {
   id: string;
-  name: string;
+  name:string;
+  email: string;
   role: Role;
   vehicleNumber?: string;
+  licenseNumber?: string;
 }
 
 export interface Location {

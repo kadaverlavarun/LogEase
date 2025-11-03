@@ -40,7 +40,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ride, currentDriverLocation }) 
         const range = maxLng - minLng;
         const progress = range !== 0 ? (currentDriverLocation.lng - minLng) / range : 0.5;
         const clampedProgress = Math.max(0, Math.min(1, progress));
-        // Animate between 40% and 60% of the map width
+        // Animate between 30% and 70% of the map width for more visible movement
         return 30 + (clampedProgress * 40);
     }
     
@@ -65,52 +65,76 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ride, currentDriverLocation }) 
     return 25;
   };
 
-  const driverStyle = {
-    left: `${getDriverLeftPercent()}%`,
-    transition: 'left 1.5s linear',
+  const driverLeftPercent = getDriverLeftPercent();
+  
+  // When a ride is active, calculate a pan offset to keep the driver centered.
+  // Otherwise, the map is static.
+  const panOffsetPercent = ride ? 50 - driverLeftPercent : 0;
+  
+  const panningContainerStyle: React.CSSProperties = {
+      position: 'absolute',
+      top: 0,
+      height: '100%',
+      width: '100%',
+      left: `${panOffsetPercent}%`,
+      transition: 'left 1.5s linear',
   };
+  
+  const backgroundStyle: React.CSSProperties = {
+      backgroundPosition: `${-panOffsetPercent * 2}% 0`, // Multiply for a more noticeable parallax effect
+      transition: 'background-position 1.5s linear',
+  };
+
 
   return (
     <div className="bg-gray-200 dark:bg-gray-700 rounded-lg p-4 h-64 relative overflow-hidden">
-      <div className="absolute inset-0 bg-map-pattern opacity-20"></div>
+      <div 
+        className="absolute inset-0 bg-map-pattern opacity-20"
+        style={backgroundStyle}
+      ></div>
       
-      {ride && <div className="absolute top-1/2 left-1/4 w-1/2 h-px bg-gray-400 dark:bg-gray-500 border-t-2 border-dashed"></div>}
+      <div style={panningContainerStyle}>
+        {ride && <div className="absolute top-1/2 left-1/4 w-1/2 h-px bg-gray-400 dark:bg-gray-500 border-t-2 border-dashed"></div>}
 
-      {/* Driver Icon */}
-      <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2" style={driverStyle}>
-        <div className="flex flex-col items-center">
-            <div className="p-2 bg-blue-500 rounded-full shadow-lg">
-                <TruckIcon className="w-6 h-6 text-white"/>
-            </div>
-            <span className="text-xs font-semibold mt-1 bg-gray-800 bg-opacity-70 text-white px-2 py-1 rounded">You</span>
-        </div>
-      </div>
-
-      {/* Customer / Pickup Icon (only shows during a ride) */}
-      {ride && (
-          <div className="absolute top-1/2 left-1/2 -translate-y-1/2 -translate-x-1/2">
-              <div className="flex flex-col items-center">
-                  <div className="p-2 bg-green-500 rounded-full shadow-lg">
-                      <UserIcon className="w-6 h-6 text-white"/>
-                  </div>
-                  <span className="text-xs font-semibold mt-1 bg-gray-800 bg-opacity-70 text-white px-2 py-1 rounded">
-                    {ride.status === RideStatus.IN_PROGRESS ? 'Pickup' : 'Customer'}
-                  </span>
-              </div>
-          </div>
-      )}
-
-      {/* Destination Icon (only shows during a ride) */}
-      {ride && (
-          <div className="absolute top-1/2 left-[75%] -translate-y-1/2 -translate-x-1/2">
+        {/* Driver Icon: Its left % is relative to the panning container */}
+        <div 
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2" 
+            style={{ left: `${driverLeftPercent}%` }}
+        >
             <div className="flex flex-col items-center">
-              <div className="p-2 bg-red-500 rounded-full shadow-lg">
-                  <LocationPinIcon className="w-6 h-6 text-white"/>
-              </div>
-              <span className="text-xs font-semibold mt-1 bg-gray-800 bg-opacity-70 text-white px-2 py-1 rounded">Destination</span>
+                <div className="p-2 bg-blue-500 rounded-full shadow-lg">
+                    <TruckIcon className="w-6 h-6 text-white"/>
+                </div>
+                <span className="text-xs font-semibold mt-1 bg-gray-800 bg-opacity-70 text-white px-2 py-1 rounded">You</span>
             </div>
-          </div>
-      )}
+        </div>
+
+        {/* Customer / Pickup Icon (only shows during a ride) */}
+        {ride && (
+            <div className="absolute top-1/2 left-1/2 -translate-y-1/2 -translate-x-1/2">
+                <div className="flex flex-col items-center">
+                    <div className="p-2 bg-green-500 rounded-full shadow-lg">
+                        <UserIcon className="w-6 h-6 text-white"/>
+                    </div>
+                    <span className="text-xs font-semibold mt-1 bg-gray-800 bg-opacity-70 text-white px-2 py-1 rounded">
+                        {ride.status === RideStatus.IN_PROGRESS ? 'Pickup' : 'Customer'}
+                    </span>
+                </div>
+            </div>
+        )}
+
+        {/* Destination Icon (only shows during a ride) */}
+        {ride && (
+            <div className="absolute top-1/2 left-[75%] -translate-y-1/2 -translate-x-1/2">
+                <div className="flex flex-col items-center">
+                <div className="p-2 bg-red-500 rounded-full shadow-lg">
+                    <LocationPinIcon className="w-6 h-6 text-white"/>
+                </div>
+                <span className="text-xs font-semibold mt-1 bg-gray-800 bg-opacity-70 text-white px-2 py-1 rounded">Destination</span>
+                </div>
+            </div>
+        )}
+      </div>
       
       <style>{`
         .bg-map-pattern {

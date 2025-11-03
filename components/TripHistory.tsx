@@ -16,10 +16,13 @@ const TripHistory: React.FC = () => {
   useEffect(() => {
     const user = getCurrentUser();
     if (user) {
-      const driverTrips = getTripsForDriver(user.id);
-      setTrips(driverTrips);
+      getTripsForDriver(user.uid).then(driverTrips => {
+        setTrips(driverTrips);
+        setIsLoadingTrips(false);
+      });
+    } else {
+        setIsLoadingTrips(false);
     }
-    setIsLoadingTrips(false);
   }, []);
 
   const handleGenerateSummary = async () => {

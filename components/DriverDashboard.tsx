@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, Ride, RideStatus, Location, LocationUpdate } from '../types';
 import * as tripService from '../services/tripService';
@@ -30,9 +29,9 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState('');
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback(async () => {
     try {
-      const driverRide = tripService.getRideForDriver(user.id);
+      const driverRide = await tripService.getRideForDriver(user.id);
       // Deep comparison is tricky, so we check key properties that change
       if (driverRide?.id !== assignedRide?.id || driverRide?.status !== assignedRide?.status || driverRide?.arrivedAtPickup !== assignedRide?.arrivedAtPickup) {
         setAssignedRide(driverRide);
@@ -76,43 +75,49 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
 
     let cleanup = () => {};
 
-    if (assignedRide.status === RideStatus.ACCEPTED && !assignedRide.arrivedAtPickup) {
-      const onPickupComplete = () => {
-        setAssignedRide(tripService.driverArrivedAtPickup(assignedRide));
-      };
-      locationService.startTracking(assignedRide, onPickupComplete);
-      cleanup = () => locationService.stopTracking();
-    } else if (assignedRide.status === RideStatus.IN_PROGRESS) {
-      const onDropoffComplete = () => {
-        tripService.endTrip(assignedRide);
-        setAssignedRide(null); // Ride is over
-      };
-      locationService.startTracking(assignedRide, onDropoffComplete);
-      cleanup = () => locationService.stopTracking();
+    const handleRideSimulation = async () => {
+        if (assignedRide.status === RideStatus.ACCEPTED && !assignedRide.arrivedAtPickup) {
+          const onPickupComplete = async () => {
+            const updatedRide = await tripService.driverArrivedAtPickup(assignedRide);
+            setAssignedRide(updatedRide);
+          };
+          locationService.startTracking(assignedRide, onPickupComplete);
+          cleanup = () => locationService.stopTracking();
+        } else if (assignedRide.status === RideStatus.IN_PROGRESS) {
+          const onDropoffComplete = async () => {
+            await tripService.endTrip(assignedRide);
+            setAssignedRide(null); // Ride is over
+          };
+          locationService.startTracking(assignedRide, onDropoffComplete);
+          cleanup = () => locationService.stopTracking();
+        }
     }
+    
+    handleRideSimulation();
     
     return cleanup;
   }, [assignedRide]);
 
 
-  const handleAcceptRide = () => {
+  const handleAcceptRide = async () => {
     if (!assignedRide) return;
     setIsAccepting(true);
-    setAssignedRide(tripService.acceptRide(assignedRide));
+    const updatedRide = await tripService.acceptRide(assignedRide);
+    setAssignedRide(updatedRide);
     setIsAccepting(false);
   };
   
-  const handleRejectRide = () => {
+  const handleRejectRide = async () => {
     if (!assignedRide) return;
-    tripService.rejectRide(assignedRide);
+    await tripService.rejectRide(assignedRide);
     setAssignedRide(null);
   };
   
-  const handleStartTripWithOtp = () => {
+  const handleStartTripWithOtp = async () => {
     if (!assignedRide) return;
     setOtpError('');
 
-    const result = tripService.verifyOtpAndStartTrip(assignedRide, otpInput);
+    const result = await tripService.verifyOtpAndStartTrip(assignedRide, otpInput);
     if (result.success && result.ride) {
       setAssignedRide(result.ride);
       setOtpInput('');
