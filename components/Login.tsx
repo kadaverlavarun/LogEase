@@ -31,6 +31,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSwitchToRegister }) => {
     }
     setIsLoading(false);
   };
+  
+  const getTitle = () => {
+    switch(role) {
+        case Role.DRIVER: return 'Driver Portal Login';
+        case Role.ADMIN: return 'Admin Portal Login';
+        default: return 'Login';
+    }
+  };
+  
+  const getSubtitle = () => {
+    switch(role) {
+        case Role.DRIVER: return 'Login to your driver account';
+        case Role.ADMIN: return 'Login to your admin portal';
+        default: return 'Login to your account';
+    }
+  };
 
   return (
     <div className="max-w-md mx-auto mt-10">
@@ -54,26 +70,19 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSwitchToRegister }) => {
                 </button>
               </div>
           </div>
-
-          <h2 className="text-2xl font-bold text-center text-gray-800 dark:text-white mb-2">
-            {role === Role.DRIVER
-              ? 'Driver Portal Login'
-              : 'Admin Portal Login'}
-          </h2>
-          <p className="text-center text-gray-500 dark:text-gray-400 mb-6">
-            Login to your {role === Role.DRIVER ? 'driver account' : 'admin portal'}
-          </p>
+          <h2 className="text-2xl font-bold text-center text-gray-800 dark:text-white mb-2">{getTitle()}</h2>
+          <p className="text-center text-gray-500 dark:text-gray-400 mb-6">{getSubtitle()}</p>
           <form onSubmit={handleLogin}>
             {error && <p className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 text-sm">{error}</p>}
             <div className="space-y-4">
               <Input
                 id="email"
                 type="email"
-                placeholder="Enter your email"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                label="Email"
+                label="Email Address"
               />
               <Input
                 id="password"
@@ -87,7 +96,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSwitchToRegister }) => {
             </div>
             <div className="mt-6">
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Logging In...' : 'Login'}
+                {isLoading ? 'Logging in...' : 'Login'}
               </Button>
             </div>
           </form>
@@ -95,7 +104,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onSwitchToRegister }) => {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Don't have an account?{' '}
               <button onClick={onSwitchToRegister} className="font-medium text-blue-600 hover:text-blue-500 dark:hover:text-blue-400">
-                Sign Up
+                Register here
               </button>
             </p>
           </div>

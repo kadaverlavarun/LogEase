@@ -6,6 +6,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import CustomerDashboard from './components/CustomerDashboard';
 import Header from './components/Header';
 import Spinner from './components/ui/Spinner';
 
@@ -94,6 +95,8 @@ const App: React.FC = () => {
         return <DriverDashboard user={currentUser} />;
       case Role.ADMIN:
         return <AdminDashboard />;
+      case Role.CUSTOMER:
+        return <CustomerDashboard user={currentUser} />;
       default:
         return <p>Error: Unknown user role.</p>;
     }
