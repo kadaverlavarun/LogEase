@@ -1,24 +1,46 @@
-
 export enum Role {
-  CUSTOMER = 'CUSTOMER',
   DRIVER = 'DRIVER',
+  ADMIN = 'ADMIN',
+  // FIX: Add CUSTOMER role
+  CUSTOMER = 'CUSTOMER',
 }
 
 export interface User {
   id: string;
-  name:string;
+  name: string;
   email: string;
   role: Role;
+  // FIX: Make properties optional to support different user roles
+  phoneNumber?: string;
   vehicleNumber?: string;
   licenseNumber?: string;
+  gstNumber?: string;
 }
 
 export interface Location {
   lat: number;
   lng: number;
-  address: string;
+  // FIX: Add optional address property
+  address?: string;
 }
 
+export interface Trip {
+  id: string;
+  driverId: string;
+  driverName: string;
+  vehicleNumber: string;
+  startTime: number;
+  startLocation: Location;
+  endTime: number | null;
+  endLocation: Location | null;
+  durationMinutes: number | null;
+  status: 'ACTIVE' | 'COMPLETED';
+  // FIX: Add missing properties for trip analytics
+  earnings: number;
+  distanceKm: number;
+}
+
+// FIX: Add missing types for customer ride feature
 export enum RideStatus {
   IDLE = 'IDLE',
   REQUESTED = 'REQUESTED',
@@ -29,29 +51,15 @@ export enum RideStatus {
 
 export interface Ride {
   id: string;
-  status: RideStatus;
   customerId: string;
   driverId: string | null;
+  status: RideStatus;
   customerLocation: Location;
-  driverLocation: Location;
+  driverLocation: Location | null;
   destination: Location;
-  startTime: number | null;
-  endTime: number | null;
-  isConfirmedByDriver?: boolean;
+  otp?: string;
   arrivedAtPickup?: boolean;
-  otp?: string | null;
-}
-
-export interface Trip {
-  id: string;
-  driverId: string;
-  customerId: string;
-  startTime: number;
-  endTime: number;
-  distanceKm: number;
-  earnings: number;
-  startAddress: string;
-  endAddress: string;
+  isConfirmedByDriver?: boolean;
 }
 
 export interface LocationUpdate {

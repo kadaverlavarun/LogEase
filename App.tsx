@@ -5,12 +5,11 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Login from './components/Login';
 import Register from './components/Register';
 import DriverDashboard from './components/DriverDashboard';
-import CustomerDashboard from './components/CustomerDashboard';
-import TripHistory from './components/TripHistory';
+import AdminDashboard from './components/AdminDashboard';
 import Header from './components/Header';
 import Spinner from './components/ui/Spinner';
 
-type View = 'login' | 'register' | 'dashboard' | 'trip_history';
+type View = 'login' | 'register' | 'dashboard';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -19,8 +18,6 @@ const App: React.FC = () => {
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      // If we are on the register page, let the component's success handler
-      // manage the state transition to avoid race conditions.
       if (view === 'register') {
         setAuthLoading(false);
         return;
@@ -31,14 +28,10 @@ const App: React.FC = () => {
         const userProfile = await getUserProfile(firebaseUser);
         if (userProfile) {
           setCurrentUser(userProfile);
-          if (view !== 'trip_history') { // Don't redirect away from history on refresh
-             setView('dashboard');
-          }
+          setView('dashboard');
         } else {
-          // If user is authenticated but profile is missing, it's an invalid state.
-          // This can happen if registration was interrupted. Safest action is to log out.
-          console.warn("User is authenticated, but no profile was found in Firestore. Logging out.");
-          await logout();
+            console.warn("User is authenticated, but no profile was found. Logging out.");
+            await logout();
         }
         setAuthLoading(false);
       } else {
@@ -50,7 +43,8 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [view]);
 
-  const handleLogin = () => {
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
     setView('dashboard');
   };
   
@@ -64,6 +58,14 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setView('login');
   };
+  
+  const navigateToDashboard = () => {
+    if (currentUser) {
+        setView('dashboard');
+    } else {
+        setView('login');
+    }
+  }
 
   const renderContent = () => {
     if (authLoading) {
@@ -87,17 +89,13 @@ const App: React.FC = () => {
       }
     }
 
-    if (view === 'trip_history' && currentUser.role === Role.DRIVER) {
-       return <TripHistory />;
-    }
-
     switch (currentUser.role) {
       case Role.DRIVER:
         return <DriverDashboard user={currentUser} />;
-      case Role.CUSTOMER:
-        return <CustomerDashboard user={currentUser} />;
+      case Role.ADMIN:
+        return <AdminDashboard />;
       default:
-        return null;
+        return <p>Error: Unknown user role.</p>;
     }
   };
 
@@ -106,8 +104,7 @@ const App: React.FC = () => {
       <Header 
         user={currentUser} 
         onLogout={handleLogout} 
-        onNavigate={(v) => setView(v as View)}
-        currentView={view}
+        onNavigateToDashboard={navigateToDashboard}
       />
       <main className="p-4 md:p-8">
         {renderContent()}

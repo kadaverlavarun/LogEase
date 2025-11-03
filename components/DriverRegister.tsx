@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { registerDriver } from '../services/authService';
 import Button from './ui/Button';
@@ -13,6 +14,7 @@ const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSw
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [error, setError] = useState('');
@@ -25,8 +27,8 @@ const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSw
     setError('');
     setSuccess('');
 
-    // FIX: Pass licenseNumber to the registerDriver function.
-    const result = await registerDriver(name, email, password, vehicleNumber, licenseNumber);
+    // FIX: Pass phoneNumber to the registerDriver function.
+    const result = await registerDriver(name, email, password, phoneNumber, vehicleNumber, licenseNumber);
     if (result.success) {
       setSuccess(result.message + ' You will be redirected to login shortly.');
       setTimeout(() => {
@@ -83,6 +85,15 @@ const DriverRegister: React.FC<DriverRegisterProps> = ({ onRegisterSuccess, onSw
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 label="Email"
+              />
+              <Input
+                id="phoneNumber"
+                type="tel"
+                placeholder="Enter your phone number"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                required
+                label="Phone Number"
               />
               <Input
                 id="password"

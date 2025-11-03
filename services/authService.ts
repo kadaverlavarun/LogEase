@@ -1,4 +1,3 @@
-
 import { User, Role } from '../types';
 import { initializeApp } from "firebase/app";
 import { 
@@ -9,7 +8,7 @@ import {
   updateProfile,
   User as FirebaseUser
 } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, collection, query, getDocs } from "firebase/firestore";
 
 // Firebase configuration and initialization
 const firebaseConfig = {
@@ -26,7 +25,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-export const registerDriver = async (name: string, email: string, password: string, vehicleNumber: string, licenseNumber: string): Promise<{ success: boolean; message: string; user?: User }> => {
+export const registerDriver = async (name: string, email: string, password: string, phoneNumber: string, vehicleNumber: string, licenseNumber: string): Promise<{ success: boolean; message: string; user?: User }> => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
@@ -38,12 +37,13 @@ export const registerDriver = async (name: string, email: string, password: stri
       name,
       email,
       role: Role.DRIVER,
+      phoneNumber,
       vehicleNumber,
       licenseNumber,
     };
     
-    const firestoreData: Omit<User, 'id'> = {
-        name, email, role: Role.DRIVER, vehicleNumber, licenseNumber
+    const firestoreData: Omit<User, 'id' | 'gstNumber'> = {
+        name, email, role: Role.DRIVER, phoneNumber, vehicleNumber, licenseNumber
     };
 
     await setDoc(doc(db, "users", user.uid), firestoreData);
@@ -57,13 +57,45 @@ export const registerDriver = async (name: string, email: string, password: stri
   }
 };
 
+export const registerAdmin = async (name: string, email: string, password: string, gstNumber: string): Promise<{ success: boolean; message: string; user?: User }> => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    await updateProfile(user, { displayName: name });
+
+    const newUser: User = {
+      id: user.uid,
+      name,
+      email,
+      role: Role.ADMIN,
+      gstNumber,
+    };
+    
+    const firestoreData: Omit<User, 'id' | 'phoneNumber' | 'vehicleNumber' | 'licenseNumber'> = {
+        name, email, role: Role.ADMIN, gstNumber
+    };
+
+    await setDoc(doc(db, "users", user.uid), firestoreData);
+
+    return { success: true, message: 'Registration successful!', user: newUser };
+  } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+        return { success: false, message: 'An account with this email already exists.' };
+    }
+    return { success: false, message: error.message };
+  }
+};
+
+
+// FIX: Add missing registerCustomer function
 export const registerCustomer = async (name: string, email: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-
-    await updateProfile(user, { displayName: name });
     
+    await updateProfile(user, { displayName: name });
+
     const newUser: User = {
       id: user.uid,
       name,
@@ -71,12 +103,10 @@ export const registerCustomer = async (name: string, email: string, password: st
       role: Role.CUSTOMER,
     };
     
-    const firestoreData: Omit<User, 'id'> = {
+    await setDoc(doc(db, "users", user.uid), {
         name, email, role: Role.CUSTOMER
-    };
+    });
 
-    await setDoc(doc(db, "users", user.uid), firestoreData);
-    
     return { success: true, message: 'Registration successful!', user: newUser };
   } catch (error: any) {
     if (error.code === 'auth/email-already-in-use') {
@@ -91,7 +121,6 @@ export const login = async (email: string, password: string): Promise<{ user: Us
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const userProfile = await getUserProfile(userCredential.user);
     if (!userProfile) {
-        // This is an edge case: auth succeeded but profile is missing.
         return { user: null, error: "Your account exists, but we couldn't load your profile. Please contact support." };
     }
     return { user: userProfile };
@@ -124,12 +153,12 @@ export const getCurrentUser = (): FirebaseUser | null => {
   return auth.currentUser;
 };
 
-export const getDrivers = async (): Promise<User[]> => {
-    const q = query(collection(db, "users"), where("role", "==", Role.DRIVER));
+export const getAllUsers = async (): Promise<User[]> => {
+    const q = query(collection(db, "users"));
     const querySnapshot = await getDocs(q);
-    const drivers: User[] = [];
+    const users: User[] = [];
     querySnapshot.forEach((doc) => {
-        drivers.push({ id: doc.id, ...doc.data() } as User);
+        users.push({ id: doc.id, ...doc.data() } as User);
     });
-    return drivers;
+    return users;
 };

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Trip } from '../types';
 
@@ -35,7 +36,7 @@ export const generateDailySummary = async (trips: Trip[]): Promise<string> => {
       - Trip ${index + 1}: 
         - Distance: ${trip.distanceKm.toFixed(1)} km
         - Earnings: ₹${trip.earnings.toFixed(2)}
-        - Duration: ${((trip.endTime - trip.startTime) / 60000).toFixed(0)} minutes
+        - Duration: ${trip.durationMinutes ? `${trip.durationMinutes.toFixed(0)} minutes` : 'N/A'}
     `).join('')}
 
     Based on this data, generate a summary. The summary should be:

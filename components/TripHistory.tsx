@@ -28,8 +28,10 @@ const TripHistory: React.FC = () => {
   const handleGenerateSummary = async () => {
     setIsLoadingSummary(true);
     setSummary('');
-    const result = await generateDailySummary(trips);
-    setSummary(result);
+    // FIX: Only generate summary for completed trips to avoid errors.
+    const completedTrips = trips.filter(trip => trip.status === 'COMPLETED');
+    const result = await generateDailySummary(completedTrips);
+    setSummary(result || ''); // Ensure summary is always a string to prevent .replace() on undefined
     setIsLoadingSummary(false);
   };
   
@@ -86,7 +88,8 @@ const TripHistory: React.FC = () => {
                   trips.map(trip => (
                     <tr key={trip.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">{new Date(trip.startTime).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{((trip.endTime - trip.startTime) / 60000).toFixed(0)} mins</td>
+                      {/* FIX: Use durationMinutes for safe rendering of trip duration */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{trip.durationMinutes ? `${trip.durationMinutes.toFixed(0)} mins` : '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{trip.distanceKm.toFixed(1)} km</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 dark:text-green-400">₹{trip.earnings.toFixed(2)}</td>
                     </tr>
