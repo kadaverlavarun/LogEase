@@ -1,4 +1,3 @@
-
 import { Ride, RideStatus, Location, LocationUpdate } from '../types';
 
 type LocationUpdateSubscriber = (update: LocationUpdate) => void;
@@ -87,9 +86,92 @@ const startTracking = (ride: Ride, onComplete: () => void) => {
   }, 1500);
 };
 
+// --- New additions for Nearby Drivers Simulation ---
+
+interface SimulatedDriver {
+  id: number;
+  location: Location;
+  target: { lat: number, lng: number };
+}
+
+let nearbyDrivers: SimulatedDriver[] = [];
+let nearbyDriversInterval: number | null = null;
+const nearbyDriversSubscribers: Set<(locations: Location[]) => void> = new Set();
+const MAP_BOUNDS = {
+  minLat: 34.03, maxLat: 34.07,
+  minLng: -118.28, maxLng: -118.20,
+};
+
+const getRandomLocationInBounds = (): { lat: number, lng: number } => {
+  return {
+    lat: MAP_BOUNDS.minLat + Math.random() * (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat),
+    lng: MAP_BOUNDS.minLng + Math.random() * (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng),
+  };
+};
+
+const notifyNearbyDrivers = () => {
+  const locations = nearbyDrivers.map(d => d.location);
+  nearbyDriversSubscribers.forEach(cb => cb(locations));
+};
+
+const subscribeToNearbyDrivers = (callback: (locations: Location[]) => void): (() => void) => {
+  nearbyDriversSubscribers.add(callback);
+  return () => {
+    nearbyDriversSubscribers.delete(callback);
+  };
+};
+
+const stopNearbyDriversSimulation = () => {
+  if (nearbyDriversInterval) clearInterval(nearbyDriversInterval);
+  nearbyDriversInterval = null;
+  nearbyDrivers = [];
+};
+
+const startNearbyDriversSimulation = (count: number) => {
+  stopNearbyDriversSimulation();
+
+  if (count === 0) return;
+
+  // Initialize drivers
+  for (let i = 0; i < count; i++) {
+    const startPos = getRandomLocationInBounds();
+    nearbyDrivers.push({
+      id: i,
+      location: { ...startPos, address: '' },
+      target: getRandomLocationInBounds(),
+    });
+  }
+  
+  notifyNearbyDrivers(); // Initial notification
+
+  nearbyDriversInterval = window.setInterval(() => {
+    nearbyDrivers.forEach(driver => {
+      const vectorLat = driver.target.lat - driver.location.lat;
+      const vectorLng = driver.target.lng - driver.location.lng;
+      
+      // Move 5% of the remaining distance each tick
+      driver.location.lat += vectorLat * 0.05;
+      driver.location.lng += vectorLng * 0.05;
+
+      // If close enough to target, get a new one
+      const distSq = vectorLat**2 + vectorLng**2;
+      if (distSq < 0.000001) { // Close enough threshold
+          driver.target = getRandomLocationInBounds();
+      }
+    });
+
+    notifyNearbyDrivers();
+  }, 1000);
+};
+
+
 export const locationService = {
   subscribe,
   startTracking,
   startIdleTracking,
   stopTracking,
+  // New exports
+  subscribeToNearbyDrivers,
+  startNearbyDriversSimulation,
+  stopNearbyDriversSimulation,
 };

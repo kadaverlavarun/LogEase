@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Ride, RideStatus, Location, LocationUpdate } from '../types';
 import * as tripService from '../services/tripService';
 import { locationService } from '../services/locationService';
@@ -28,37 +28,67 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   const [error, setError] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState('');
-
-  const fetchData = useCallback(async () => {
-    try {
-      const driverRide = await tripService.getRideForDriver(user.id);
-      // Deep comparison is tricky, so we check key properties that change
-      if (driverRide?.id !== assignedRide?.id || driverRide?.status !== assignedRide?.status || driverRide?.arrivedAtPickup !== assignedRide?.arrivedAtPickup) {
-        setAssignedRide(driverRide);
-      }
-    } catch (e) {
-      console.error("Failed to fetch data:", e);
-      setError("Could not load ride data.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user.id, assignedRide?.id, assignedRide?.status, assignedRide?.arrivedAtPickup]);
-
-  // Effect for polling ride status and managing location subscription
+  
+  // This single effect handles initial data loading, demo ride creation, AND polling.
   useEffect(() => {
-    fetchData();
-    const pollInterval = setInterval(fetchData, 2000);
+    let isMounted = true;
+    let pollInterval: number | null = null;
+    
+    const setupAndPoll = async () => {
+      // On initial load, try to get a ride. If none, create a demo one.
+      try {
+        let ride = await tripService.getRideForDriver(user.id);
+        if (!ride) {
+          ride = await tripService.createDemoRideForDriver(user);
+        }
+        if (isMounted) {
+          setAssignedRide(ride);
+          setIsLoading(false);
+        }
+      } catch (e) {
+        console.error("Failed to setup initial ride:", e);
+        if (isMounted) {
+          setError("Could not load ride data.");
+          setIsLoading(false);
+        }
+      }
+      
+      // Now start polling for any external updates
+      pollInterval = window.setInterval(async () => {
+        try {
+          const driverRide = await tripService.getRideForDriver(user.id);
+          if (isMounted) {
+            setAssignedRide(prevRide => {
+                // A simple JSON stringify is a reliable way to check for any deep changes.
+                // This is safe for serializable Firestore data.
+                if (JSON.stringify(driverRide) !== JSON.stringify(prevRide)) {
+                    return driverRide;
+                }
+                return prevRide;
+            });
+          }
+        } catch (e) {
+          console.error("Failed to poll for ride status:", e);
+        }
+      }, 3000);
+    };
+
+    setupAndPoll();
+
     const unsubscribeLocation = locationService.subscribe((update: LocationUpdate) => {
-        setDriverLocation(update.location);
-        setEta(update.etaSeconds);
+        if (isMounted) {
+            setDriverLocation(update.location);
+            setEta(update.etaSeconds);
+        }
     });
 
     return () => {
-      clearInterval(pollInterval);
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
       unsubscribeLocation();
       locationService.stopTracking(); // Stop all tracking on unmount
     };
-  }, [fetchData]);
+  }, [user.id]);
 
   // Effect to manage the type of location tracking (idle vs. trip)
   useEffect(() => {
@@ -86,7 +116,9 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
         } else if (assignedRide.status === RideStatus.IN_PROGRESS) {
           const onDropoffComplete = async () => {
             await tripService.endTrip(assignedRide);
-            setAssignedRide(null); // Ride is over
+            // After ending the trip, immediately create a new demo ride for a continuous loop.
+            const newRide = await tripService.createDemoRideForDriver(user);
+            setAssignedRide(newRide);
           };
           locationService.startTracking(assignedRide, onDropoffComplete);
           cleanup = () => locationService.stopTracking();
@@ -96,7 +128,7 @@ const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     handleRideSimulation();
     
     return cleanup;
-  }, [assignedRide]);
+  }, [assignedRide, user]);
 
 
   const handleAcceptRide = async () => {

@@ -5,6 +5,7 @@ import { locationService } from '../services/locationService';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import MapDisplay from './MapDisplay';
+import NearbyDriversMap from './NearbyDriversMap';
 
 interface CustomerDashboardProps {
   user: User;
@@ -33,6 +34,7 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
   const [nearbyDrivers, setNearbyDrivers] = useState(0);
   const [driverLocation, setDriverLocation] = useState<Location | null>(null);
   const [eta, setEta] = useState<number | null>(null);
+  const [nearbyDriverLocations, setNearbyDriverLocations] = useState<Location[]>([]);
 
   const checkRideStatus = useCallback(async () => {
     const ride = await tripService.getRideForCustomer(user.id);
@@ -69,6 +71,25 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
     }
   }, [activeRide]);
 
+  // New effect for nearby drivers simulation
+  useEffect(() => {
+    // If we have a non-zero number of drivers and no ride, start simulation
+    if (nearbyDrivers > 0 && !activeRide) {
+      locationService.startNearbyDriversSimulation(nearbyDrivers);
+      const unsubscribe = locationService.subscribeToNearbyDrivers(setNearbyDriverLocations);
+      
+      return () => {
+        unsubscribe();
+        locationService.stopNearbyDriversSimulation();
+      };
+    } else {
+      // Clean up if there are no drivers or if a ride becomes active
+      locationService.stopNearbyDriversSimulation();
+      setNearbyDriverLocations([]);
+    }
+  }, [nearbyDrivers, activeRide]);
+
+
   const handleRequestRide = async () => {
     setIsLoading(true);
     setError('');
@@ -97,10 +118,14 @@ const CustomerDashboard: React.FC<CustomerDashboardProps> = ({ user }) => {
       return (
         <div className="text-center">
             <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-200">Ready to go somewhere?</h3>
+            
+            <NearbyDriversMap driverLocations={nearbyDriverLocations} />
+
             <div className="flex items-center justify-center space-x-2 text-green-600 dark:text-green-400 my-3">
                 <SignalIcon className="w-5 h-5" />
                 <p><span className="font-bold">{nearbyDrivers} drivers</span> nearby</p>
             </div>
+            
             <p className="text-gray-500 dark:text-gray-400 mt-2 mb-6">Request a ride to get started.</p>
             <Button onClick={handleRequestRide} disabled={isLoading}>
                 {isLoading ? 'Requesting...' : 'Request Ride'}

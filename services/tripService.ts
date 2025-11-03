@@ -156,7 +156,17 @@ export const verifyOtpAndStartTrip = async (ride: Ride, submittedOtp: string): P
   const rideRef = doc(db, "rides", ride.id);
   const rideSnap = await getDoc(rideRef);
   
-  if (!rideSnap.exists() || rideSnap.data().otp !== submittedOtp) {
+  if (!rideSnap.exists()) {
+    return { success: false };
+  }
+  
+  // For the demo ride, accept any 4-digit number as OTP.
+  const isDemoRide = ride.customerId === 'customer_demo_123';
+  const isValidOtp = isDemoRide
+    ? /^\d{4}$/.test(submittedOtp) // For the demo, check if it's a 4-digit number
+    : rideSnap.data().otp === submittedOtp; // Original check for real rides
+
+  if (!isValidOtp) {
     return { success: false };
   }
 
@@ -226,3 +236,36 @@ export const estimateRideDetails = (ride: Ride): { distanceKm: number, earnings:
     const earnings = distanceKm * 12 + 50;
     return { distanceKm, earnings: parseFloat(earnings.toFixed(2)) };
 }
+
+export const createDemoRideForDriver = async (driver: User): Promise<Ride | null> => {
+    // Check if driver already has an active ride to avoid creating duplicates
+    const existingRide = await getRideForDriver(driver.id);
+    if (existingRide) {
+        return null; // Don't create a ride if one exists
+    }
+
+    const mockCustomer = {
+        id: 'customer_demo_123',
+        name: 'Demo Customer',
+    };
+
+    const newRideData = {
+        status: RideStatus.ACCEPTED,
+        customerId: mockCustomer.id,
+        driverId: driver.id,
+        customerLocation: MOCK_LOCATIONS.customer,
+        driverLocation: MOCK_LOCATIONS.driver, 
+        destination: MOCK_LOCATIONS.destination,
+        startTime: null,
+        endTime: null,
+        isConfirmedByDriver: false,
+        arrivedAtPickup: false,
+        otp: null,
+    };
+    
+    const rideRef = await addDoc(collection(db, "rides"), newRideData);
+    const newRide = { ...newRideData, id: rideRef.id };
+    await setDoc(doc(db, "rides", rideRef.id), newRide);
+    
+    return newRide;
+};
